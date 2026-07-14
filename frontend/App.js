@@ -1,34 +1,40 @@
 const api = "http://127.0.0.1:8000/api";
 
-const carForm = document.getElementById("carForm");
-const deleteCarForm = document.getElementById("deleteCarForm");
-const findCarForm = document.getElementById("findCarForm");
-const replaceCarForm = document.getElementById("replaceCarForm");
-const fifoForm = document.getElementById("fifoForm");
-const vinInput = document.getElementById("vinInput");
-const deleteVinInput = document.getElementById("deleteVinInput");
-const findVinInput = document.getElementById("findVinInput");
-const findModelInput = document.getElementById("findModelInput");
-const replaceVinInput = document.getElementById("replaceVinInput");
-const replaceCellIdInput = document.getElementById("replaceCellIdInput");
-const fifoModelInput = document.getElementById("fifoModelInput");
-const modelInput = document.getElementById("modelInput");
-const cellIdInput = document.getElementById("cellIdInput");
+const car_form = document.getElementById("carForm");
+const delete_car_form = document.getElementById("deleteCarForm");
+const reserve_car_form = document.getElementById("reserveCarForm");
+const find_car_form = document.getElementById("findCarForm");
+const replace_car_form = document.getElementById("replaceCarForm");
+const fifo_form = document.getElementById("fifoForm");
+const unreserve_car_form = document.getElementById("unreserveCarForm");
+const vin_input = document.getElementById("vinInput");
+const delete_vin_input = document.getElementById("deleteVinInput");
+const reserve_vin_input = document.getElementById("reserveVinInput");
+const find_vin_input = document.getElementById("findVinInput");
+const find_model_input = document.getElementById("findModelInput");
+const replace_vin_input = document.getElementById("replaceVinInput");
+const replace_cell_id_input = document.getElementById("replaceCellIdInput");
+const fifo_model_input = document.getElementById("fifoModelInput");
+const model_input = document.getElementById("modelInput");
+const cell_id_input = document.getElementById("cellIdInput");
 const message = document.getElementById("message");
-const totalCars = document.getElementById("totalCars");
-const occupiedCells = document.getElementById("occupiedCells");
-const freeCells = document.getElementById("freeCells");
-const zoneDashboard = document.getElementById("zoneDashboard");
-const refreshDashboardButton = document.getElementById("refreshDashboard");
+const total_cars = document.getElementById("totalCars");
+const occupied_cells = document.getElementById("occupiedCells");
+const free_cells = document.getElementById("freeCells");
+const reserved_cells = document.getElementById("reservedCells");
+const zone_dashboard = document.getElementById("zoneDashboard");
+const refresh_dashboard_button = document.getElementById("refreshDashboard");
+const unreserve_vin_input = document.getElementById("unreserveVinInput");
 
-function renderDashboard(data) {
-    totalCars.textContent = data.totalCars;
-    occupiedCells.textContent = `${data.occupiedCells} / ${data.totalCells}`;
-    freeCells.textContent = data.freeCells;
-    zoneDashboard.replaceChildren();
+function render_dashboard(data) {
+    total_cars.textContent = data.totalCars;
+    occupied_cells.textContent = `${data.occupiedCells} / ${data.totalCells}`;
+    free_cells.textContent = data.freeCells;
+    reserved_cells.textContent = data.reservedCells;
+    zone_dashboard.replaceChildren();
 
     data.zones.forEach((zone) => {
-        const percent = zone.total === 0 ? 0 : Math.round((zone.occupied / zone.total) * 100);
+        const percent = zone.total === 0 ? 0 : Math.round(((zone.occupied + zone.reserved) / zone.total) * 100);
         const card = document.createElement("article");
         card.className = "zone-card";
         card.innerHTML = `
@@ -41,37 +47,37 @@ function renderDashboard(data) {
                 <span><b class="free-dot"></b>Свободно: ${zone.free}</span>
                 <span>Всего: ${zone.total}</span>
             </div>`;
-        zoneDashboard.append(card);
+        zone_dashboard.append(card);
     });
 }
 
-async function loadDashboard() {
-    refreshDashboardButton.disabled = true;
+async function load_dashboard() {
+    refresh_dashboard_button.disabled = true;
     try {
         const response = await fetch(`${api}/dashboard`);
         if (!response.ok) throw new Error("Dashboard request failed");
-        renderDashboard(await response.json());
+        render_dashboard(await response.json());
     } catch (error) {
-        zoneDashboard.innerHTML = '<p class="dashboard-status dashboard-status--error">Не удалось загрузить дашборд. Проверьте соединение с API.</p>';
+        zone_dashboard.innerHTML = '<p class="dashboard-status dashboard-status--error">Не удалось загрузить дашборд. Проверьте соединение с API.</p>';
     } finally {
-        refreshDashboardButton.disabled = false;
+        refresh_dashboard_button.disabled = false;
     }
 }
 
-refreshDashboardButton.addEventListener("click", loadDashboard);
+refresh_dashboard_button.addEventListener("click", load_dashboard);
 
-carForm.addEventListener("submit", async (event) => {
+car_form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
     const car = {
-        vin: vinInput.value,
-        model: modelInput.value,
+        vin: vin_input.value,
+        model: model_input.value,
     };
 
     
 
-    if (cellIdInput.value) {
-        car.cellId = cellIdInput.value;
+    if (cell_id_input.value) {
+        car.cellId = cell_id_input.value;
     }
 
     try {
@@ -91,19 +97,19 @@ carForm.addEventListener("submit", async (event) => {
         }
 
         message.textContent = `Машина ${data.vin} добавлена в ячейку ${data.cellId}`;
-        carForm.reset();
-        await loadDashboard();
+        car_form.reset();
+        await load_dashboard();
     } catch (error) {
         message.textContent = "Нет связи с API";
     }
 });
 
-deleteCarForm.addEventListener("submit", async (event) => {
+delete_car_form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const vin = deleteVinInput.value;
+    const vin = delete_vin_input.value;
     
     try {
-        const response = await fetch(`${api}/car/${vin}`, {
+        const response = await fetch(`${api}/car/${encodeURIComponent(vin)}`, {
             method: "DELETE",
         });
 
@@ -113,18 +119,41 @@ deleteCarForm.addEventListener("submit", async (event) => {
             return;
         } else {
             message.textContent = `Машина ${vin} удалена`;
-            deleteCarForm.reset();
-            await loadDashboard();
+            delete_car_form.reset();
+            await load_dashboard();
         }
     } catch (error) {
         message.textContent = "Нет связи с API";
     }
 });
 
-findCarForm.addEventListener("submit", async (event) => {
+reserve_car_form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const vin = findVinInput.value;
-    const model = findModelInput.value;
+    const vin = reserve_vin_input.value;
+
+    try {
+        const response = await fetch(`${api}/reserve/${encodeURIComponent(vin)}`, {
+            method: "PATCH",
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            message.textContent = data.detail || "Не удалось зарезервировать машину";
+            return;
+        }
+
+        message.textContent = `Машина ${data.vin} зарезервирована`;
+        reserve_car_form.reset();
+        await load_dashboard();
+    } catch (error) {
+        message.textContent = "Нет связи с API";
+    }
+});
+
+find_car_form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const vin = find_vin_input.value;
+    const model = find_model_input.value;
 
     try {
         if(vin != "" && model == "") {
@@ -151,11 +180,11 @@ findCarForm.addEventListener("submit", async (event) => {
     }
 });
 
-replaceCarForm.addEventListener("submit", async (event) => {
+replace_car_form.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const vin = replaceVinInput.value;
-    const newCellId = replaceCellIdInput.value;
+    const vin = replace_vin_input.value;
+    const new_cell_id = replace_cell_id_input.value;
 
     try {
         const response = await fetch(
@@ -166,7 +195,7 @@ replaceCarForm.addEventListener("submit", async (event) => {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    cellId: newCellId,
+                    cellId: new_cell_id,
                 }),
             }
         );
@@ -181,18 +210,18 @@ replaceCarForm.addEventListener("submit", async (event) => {
 
         message.textContent =
             `Машина ${data.vin} перемещена в ячейку ${data.cellId}`;
-        replaceCarForm.reset();
-        await loadDashboard();
+        replace_car_form.reset();
+        await load_dashboard();
     } catch (error) {
         message.textContent = "Нет связи с API";
     }
 });
 
-loadDashboard();
+load_dashboard();
 
-fifoForm.addEventListener("submit", async (event) => {
+fifo_form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const model = fifoModelInput.value;
+    const model = fifo_model_input.value;
 
     try {
         const response = await fetch(`${api}/fifo/${encodeURIComponent(model)}`, {
@@ -209,3 +238,27 @@ fifoForm.addEventListener("submit", async (event) => {
         message.textContent = "Нет связи с API";
     }
 });
+
+unreserve_car_form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const vin = unreserve_vin_input.value;
+    
+    try {
+        const response = await fetch(`${api}/unreserve/${encodeURIComponent(vin)}`, {
+            method: "PATCH",
+        });
+        
+        const data = await response.json();
+        if (!response.ok) {
+            message.textContent = data.detail || "Не удалось снять резерв";
+        } else {
+            message.textContent = `Резерв снят для машины ${data.vin}`;
+        }
+    } catch (error) {
+        message.textContent = "Нет связи с API";
+    }
+});
+
+function exportData() {
+    window.location.href = `${api}/csv`;
+}

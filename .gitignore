@@ -1,3 +1,6 @@
-.vercel
-.vscode
-api/__pycache__
+.vercel/
+.vscode/
+pycache/
+*.pyc
+*.pyo
+*.pyd

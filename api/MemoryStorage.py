@@ -11,26 +11,26 @@ class MemoryStorage:
     def create_car(self, car: Car) -> Car:
         with self._lock:
             if car.vin in self._cars:
-                raise ValueError("Car already exists")
+                raise ValueError("Машина уже существует")
 
-            if car.cellId is None:
+            if car.cell_id is None:
                 cell = next(
                     (cell for cell in self.warehouse.cells if cell.status == "free"),
                     None,
                 )
                 if cell is None:
-                    raise ValueError("No free cells")
+                    raise ValueError("Нет свободных ячеек")
             else:
                 cell = next(
-                    (cell for cell in self.warehouse.cells if cell.Id == car.cellId),
+                    (cell for cell in self.warehouse.cells if cell.id == car.cell_id),
                     None,
                 )
                 if cell is None:
-                    raise ValueError("Cell not found")
+                    raise ValueError("Ячейка не найдена")
                 if cell.status != "free":
-                    raise ValueError("Cell is occupied")
+                    raise ValueError("Ячейка занята")
 
-            placed_car = car.model_copy(update={"cellId": cell.Id})
+            placed_car = car.model_copy(update={"cell_id": cell.id})
             cell.status = "occupied"
             self._cars[placed_car.vin] = placed_car
             return placed_car
@@ -45,14 +45,18 @@ class MemoryStorage:
 
     def delete_car(self, vin: str) -> bool:
         with self._lock:
-            car = self._cars.pop(vin, None)
+            car = self._cars.get(vin)
             if car is None:
                 return False
 
             cell = next(
-                (cell for cell in self.warehouse.cells if cell.Id == car.cellId),
+                (cell for cell in self.warehouse.cells if cell.id == car.cell_id),
                 None,
             )
+            if cell is not None and cell.status == "reserved":
+                raise ValueError("Машина зарезервирована")
+
+            del self._cars[vin]
             if cell is not None:
                 cell.status = "free"
             return True
@@ -64,23 +68,27 @@ class MemoryStorage:
             for zone_name in zone_names:
                 zone_cells = [cell for cell in self.warehouse.cells if cell.zone == zone_name]
                 occupied = sum(cell.status == "occupied" for cell in zone_cells)
+                reserved = sum(cell.status == "reserved" for cell in zone_cells)
                 zones.append(ZoneOccupancy(
                     zone=zone_name,
                     total=len(zone_cells),
                     occupied=occupied,
-                    free=len(zone_cells) - occupied,
+                    reserved=reserved,
+                    free=len(zone_cells) - occupied - reserved,
                 ))
 
             occupied_cells = sum(zone.occupied for zone in zones)
+            reserved_cells = sum(zone.reserved for zone in zones)
             total_cells = len(self.warehouse.cells)
             return Dashboard(
-                totalCars=len(self._cars),
-                totalCells=total_cells,
-                occupiedCells=occupied_cells,
-                freeCells=total_cells - occupied_cells,
+                total_cars=len(self._cars),
+                total_cells=total_cells,
+                occupied_cells=occupied_cells,
+                reserved_cells=reserved_cells,
+                free_cells=total_cells - occupied_cells - reserved_cells,
                 zones=zones,
             )
-    
+
     def get_cars_by_model(self, model: str) -> list[Car]:
         with self._lock:
             return [car for car in self._cars.values() if car.model == model]
@@ -88,35 +96,88 @@ class MemoryStorage:
     def get_first_car_by_model(self, model: str) -> Car | None:
         with self._lock:
             cars = (car for car in self._cars.values() if car.model == model)
-            return min(cars, key=lambda car: car.arrivalTime, default=None)
-    
+            return min(cars, key=lambda car: car.arrival_time, default=None)
+
     def move_car(self, vin: str, new_cell_id: str) -> Car:
         with self._lock:
             car = self._cars.get(vin)
             if car is None:
-                raise ValueError("Car not found")
-    
+                raise ValueError("Машина не найдена")
+
             old_cell = next(
-                (cell for cell in self.warehouse.cells if cell.Id == car.cellId),
+                (cell for cell in self.warehouse.cells if cell.id == car.cell_id),
                 None,
             )
             new_cell = next(
-                (cell for cell in self.warehouse.cells if cell.Id == new_cell_id),
+                (cell for cell in self.warehouse.cells if cell.id == new_cell_id),
                 None,
             )
-    
+
+            if old_cell is not None and old_cell.status == "reserved":
+                raise ValueError("Машина зарезервирована")
+
             if new_cell is None:
-                raise ValueError("Cell not found")
-    
+                raise ValueError("Ячейка не найдена")
+
             if new_cell.status != "free":
-                raise ValueError("Cell is occupied")
-    
+                raise ValueError("Ячейка занята")
+
             if old_cell is not None:
                 old_cell.status = "free"
     
             new_cell.status = "occupied"
     
-            moved_car = car.model_copy(update={"cellId": new_cell_id})
+            moved_car = car.model_copy(update={"cell_id": new_cell_id})
             self._cars[vin] = moved_car
     
             return moved_car
+
+    def reserve_car(self, vin: str) -> Car:
+        with self._lock:
+            car = self._cars.get(vin)
+            if car is None:
+                raise ValueError("Машина не найдена")
+
+            cell = next(
+                (cell for cell in self.warehouse.cells if cell.id == car.cell_id),
+                None,
+            )
+
+            if cell is None:
+                raise ValueError("Ячейка не найдена")
+
+            if cell.status == "reserved":
+                raise ValueError("Машина уже зарезервирована")
+            if cell.status != "occupied":
+                raise ValueError("Ячейка не занята")
+
+            cell.status = "reserved"
+
+            reserved_car = car.model_copy(update={"cell_id": cell.id})
+            self._cars[vin] = reserved_car
+
+            return reserved_car
+
+    def unreserve_car(self, vin: str) -> Car:
+        with self._lock:
+            car = self._cars.get(vin)
+            if car is None:
+                raise ValueError("Машина не найдена")
+
+            cell = next(
+                (cell for cell in self.warehouse.cells if cell.id == car.cell_id),
+                None,
+            )
+
+            if cell is None:
+                raise ValueError("Ячейка не найдена")
+
+            if cell.status != "reserved":
+                raise ValueError("Машина не зарезервирована")
+
+            cell.status = "occupied"
+
+            unreserved_car = car.model_copy(update={"cell_id": cell.id})
+            self._cars[vin] = unreserved_car
+
+            return unreserved_car

@@ -21,6 +21,7 @@
                 <article class="summary-card"><span>Всего авто</span><strong id="totalCars">—</strong></article>
                 <article class="summary-card summary-card--occupied"><span>Занято мест</span><strong id="occupiedCells">—</strong></article>
                 <article class="summary-card summary-card--free"><span>Свободно мест</span><strong id="freeCells">—</strong></article>
+                <article class="summary-card summary-card--reserved"><span>Зарезервировано под выгрузку</span><strong id="reservedCells">—</strong></article>
             </div>
 
             <h2>Занятость по зонам</h2>
@@ -41,6 +42,14 @@
                 <input id="deleteVinInput" type="text" placeholder="VIN для удаления" required>
                 <button type="submit">Удалить машину</button>
             </form>
+            <form id="reserveCarForm">
+                <input id="reserveVinInput" type="text" placeholder="VIN для резервирования" required>
+                <button type="submit">Зарезервировать машину</button>
+            </form>
+            <form id="unreserveCarForm">
+                <input id="unreserveVinInput" type="text" placeholder="VIN для снятия резерва" required>
+                <button type="submit">Снять резерв</button>
+            </form>
             <form id="findCarForm">
                 <input id="findVinInput" type="text" placeholder="VIN для поиска">
                 <input id="findModelInput" type="text" placeholder="Модель для поиска">
@@ -57,6 +66,8 @@
             </form>
             <p id="message"></p>
         </section>
+
+        <button onclick="exportData()">Экспортировать данные</button>
     </main>
     <script src="./App.js"></script>
 </body>
