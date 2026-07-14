@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flat WMS</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <main class="page">
+        <section class="dashboard" aria-labelledby="dashboardTitle">
+            <div class="dashboard__header">
+                <div>
+                    <p class="eyebrow">Склад</p>
+                    <h1 id="dashboardTitle">Дашборд занятости</h1>
+                </div>
+                <button id="refreshDashboard" class="secondary" type="button">Обновить</button>
+            </div>
+
+            <div class="summary" aria-live="polite">
+                <article class="summary-card"><span>Всего авто</span><strong id="totalCars">—</strong></article>
+                <article class="summary-card summary-card--occupied"><span>Занято мест</span><strong id="occupiedCells">—</strong></article>
+                <article class="summary-card summary-card--free"><span>Свободно мест</span><strong id="freeCells">—</strong></article>
+            </div>
+
+            <h2>Занятость по зонам</h2>
+            <div id="zoneDashboard" class="zones">
+                <p class="dashboard-status">Загрузка данных…</p>
+            </div>
+        </section>
+
+        <section class="operations">
+            <h2>Операции с автомобилями</h2>
+            <form id="carForm">
+                <input id="vinInput" type="text" placeholder="VIN" required>
+                <input id="modelInput" type="text" placeholder="Модель" required>
+                <input id="cellIdInput" type="text" placeholder="ID ячейки (необязательно)">
+                <button type="submit">Добавить</button>
+            </form>
+            <form id="deleteCarForm">
+                <input id="deleteVinInput" type="text" placeholder="VIN для удаления" required>
+                <button type="submit">Удалить машину</button>
+            </form>
+            <form id="findCarForm">
+                <input id="findVinInput" type="text" placeholder="VIN для поиска">
+                <input id="findModelInput" type="text" placeholder="Модель для поиска">
+                <button type="submit">Найти машину</button>
+            </form>
+            <form id="replaceCarForm">
+                <input id="replaceVinInput" type="text" placeholder="VIN для перемещения" required>
+                <input id="replaceCellIdInput" type="text" placeholder="Новый ID ячейки" required>
+                <button type="submit">Переместить машину</button>
+            </form>
+            <form id="fifoForm">
+                <input id="fifoModelInput" type="text" placeholder="Модель для FIFO" required>
+                <button type="submit">FIFO по модели</button>
+            </form>
+            <p id="message"></p>
+        </section>
+    </main>
+    <script src="./App.js"></script>
+</body>
+</html>

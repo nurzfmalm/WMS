@@ -1,0 +1,22 @@
+{
+  "Id": "warehouse-1",
+  "name": "Основной склад",
+  "location": "Кызылорда",
+  "zones": [
+    {
+      "name": "A",
+      "rows": 2,
+      "cellsPerRow": 3
+    },
+    {
+      "name": "B",
+      "rows": 1,
+      "cellsPerRow": 2
+    },
+    {
+  "name": "C",
+  "rows": 5,
+  "cellsPerRow": 10
+}
+  ]
+}
