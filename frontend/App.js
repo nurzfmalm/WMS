@@ -1,4 +1,4 @@
-const api = "http://127.0.0.1:8000/api";
+const api = "https://api-self-delta-89.vercel.app/api";
 
 const car_form = document.getElementById("carForm");
 const delete_car_form = document.getElementById("deleteCarForm");
