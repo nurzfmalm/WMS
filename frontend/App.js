@@ -1,11 +1,9 @@
-const API = "https://api-self-delta-89.vercel.app/api";
-
+const API = "https://wms-xxgh.vercel.app/api";
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 let warehouse = null;
 let cars = [];
 let activeZone = "all";
-let searchTouched = false;
 
 const statusNames = { free: "Свободно", occupied: "Занято", reserved: "В резерве" };
 
@@ -51,7 +49,7 @@ function renderFilters() {
 
 function renderMap() {
     if (!warehouse) return;
-    const query = searchTouched ? $("#mapSearch").value.trim().toLowerCase() : "";
+    const query = $("#mapSearch").value.trim().toLowerCase();
     const zones = [...new Set(warehouse.cells.map((cell) => cell.zone))].filter((zone) => activeZone === "all" || activeZone === zone);
     const html = zones.map((zone) => {
         const zoneCells = warehouse.cells.filter((cell) => cell.zone === zone);
@@ -99,16 +97,7 @@ async function loadData() {
     const button = $("#refreshDashboard");
     button.disabled = true;
     try {
-        let state;
-        try {
-            state = await apiRequest("/state");
-        } catch (error) {
-            if (error.status !== 404) throw error;
-            const [warehouseData, dashboardData, carData] = await Promise.all([
-                apiRequest("/warehouse"), apiRequest("/dashboard"), apiRequest("/cars")
-            ]);
-            state = {warehouse: warehouseData, dashboard: dashboardData, cars: carData};
-        }
+        const state = await apiRequest("/state");
         warehouse = state.warehouse;
         cars = state.cars;
         $("#warehouseName").textContent = warehouse.name || "Управление складом";
@@ -158,7 +147,6 @@ $("#findCarForm").addEventListener("submit", async (event) => {
         const result = vin ? [await apiRequest(`/car/${encodeURIComponent(vin)}`)] : await apiRequest(`/cars/${encodeURIComponent(model)}`);
         showMessage(result.map((car)=>`${car.model} · VIN ${car.vin} · ячейка ${car.cellId}`).join("; "));
         $("#mapSearch").value = vin || model;
-        searchTouched = true;
         renderMap();
     } catch(error) { showMessage(error.message,true); }
 });
@@ -166,10 +154,7 @@ $("#fifoForm").addEventListener("submit", async (event) => { event.preventDefaul
 
 $("#refreshDashboard").addEventListener("click", loadData);
 $("#exportButton").addEventListener("click", () => { window.location.href = `${API}/csv`; });
-$("#mapSearch").addEventListener("input", () => {
-    searchTouched = true;
-    renderMap();
-});
+$("#mapSearch").addEventListener("input", renderMap);
 $("#zoneFilters").addEventListener("click", (event) => { const button=event.target.closest("[data-zone]"); if(!button)return; activeZone=button.dataset.zone; renderFilters(); renderMap(); });
 $("#warehouseGrid").addEventListener("click", (event) => { const cell=event.target.closest("[data-cell]"); if(cell) openCell(cell.dataset.cell); });
 $("#dialogContent").addEventListener("submit", (event) => {
@@ -199,18 +184,5 @@ $$('[data-close-dialog]').forEach((button) => button.addEventListener("click", (
 document.addEventListener("keydown", (event) => { if(event.key === "Escape") $("#cellDialog").hidden=true; });
 $$('.operation-tab').forEach((tab) => tab.addEventListener("click", () => { $$('.operation-tab').forEach(t=>t.classList.toggle("active",t===tab)); $$('.operation-form').forEach(panel=>panel.classList.toggle("active",panel.dataset.panel===tab.dataset.tab)); }));
 
-// Некоторые браузеры восстанавливают значения полей после перезагрузки страницы.
-// Карта всегда должна открываться без старого фильтра и подсветки.
 $("#mapSearch").value = "";
-activeZone = "all";
-searchTouched = false;
-window.addEventListener("pageshow", (event) => {
-    if (!event.persisted) return;
-    $("#mapSearch").value = "";
-    activeZone = "all";
-    searchTouched = false;
-    renderFilters();
-    renderMap();
-});
-
 loadData();
