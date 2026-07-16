@@ -61,33 +61,45 @@ class MemoryStorage:
                 cell.status = "free"
             return True
 
+    def _get_dashboard_unlocked(self) -> Dashboard:
+        zone_names = list(dict.fromkeys(cell.zone for cell in self.warehouse.cells))
+        zones = []
+        for zone_name in zone_names:
+            zone_cells = [cell for cell in self.warehouse.cells if cell.zone == zone_name]
+            occupied = sum(cell.status == "occupied" for cell in zone_cells)
+            reserved = sum(cell.status == "reserved" for cell in zone_cells)
+            zones.append(ZoneOccupancy(
+                zone=zone_name,
+                total=len(zone_cells),
+                occupied=occupied,
+                reserved=reserved,
+                free=len(zone_cells) - occupied - reserved,
+            ))
+
+        occupied_cells = sum(zone.occupied for zone in zones)
+        reserved_cells = sum(zone.reserved for zone in zones)
+        total_cells = len(self.warehouse.cells)
+        return Dashboard(
+            total_cars=len(self._cars),
+            total_cells=total_cells,
+            occupied_cells=occupied_cells,
+            reserved_cells=reserved_cells,
+            free_cells=total_cells - occupied_cells - reserved_cells,
+            zones=zones,
+        )
+
     def get_dashboard(self) -> Dashboard:
         with self._lock:
-            zone_names = list(dict.fromkeys(cell.zone for cell in self.warehouse.cells))
-            zones = []
-            for zone_name in zone_names:
-                zone_cells = [cell for cell in self.warehouse.cells if cell.zone == zone_name]
-                occupied = sum(cell.status == "occupied" for cell in zone_cells)
-                reserved = sum(cell.status == "reserved" for cell in zone_cells)
-                zones.append(ZoneOccupancy(
-                    zone=zone_name,
-                    total=len(zone_cells),
-                    occupied=occupied,
-                    reserved=reserved,
-                    free=len(zone_cells) - occupied - reserved,
-                ))
+            return self._get_dashboard_unlocked()
 
-            occupied_cells = sum(zone.occupied for zone in zones)
-            reserved_cells = sum(zone.reserved for zone in zones)
-            total_cells = len(self.warehouse.cells)
-            return Dashboard(
-                total_cars=len(self._cars),
-                total_cells=total_cells,
-                occupied_cells=occupied_cells,
-                reserved_cells=reserved_cells,
-                free_cells=total_cells - occupied_cells - reserved_cells,
-                zones=zones,
-            )
+    def get_state(self) -> dict:
+        """Return one internally consistent snapshot for the frontend."""
+        with self._lock:
+            return {
+                "warehouse": self.warehouse.model_copy(deep=True),
+                "dashboard": self._get_dashboard_unlocked(),
+                "cars": [car.model_copy(deep=True) for car in self._cars.values()],
+            }
 
     def get_cars_by_model(self, model: str) -> list[Car]:
         with self._lock:

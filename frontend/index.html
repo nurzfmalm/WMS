@@ -3,72 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flat WMS</title>
+    <meta name="theme-color" content="#05070b">
+    <title>WMS Control — управление складом</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-    <main class="page">
-        <section class="dashboard" aria-labelledby="dashboardTitle">
-            <div class="dashboard__header">
+    <div class="app-shell">
+        <aside class="sidebar">
+            <a class="brand" href="#overview" aria-label="WMS Control">
+                <span class="brand__mark">W</span>
+                <span><b>WMS</b><small>CONTROL</small></span>
+            </a>
+            <nav class="nav" aria-label="Главная навигация">
+                <a class="nav__item active" href="#overview"><span>⌂</span> Обзор</a>
+                <a class="nav__item" href="#warehouseMap"><span>▦</span> Карта склада</a>
+                <a class="nav__item" href="#operations"><span>↔</span> Операции</a>
+            </nav>
+            <div class="sidebar__footer">
+                <span class="connection-dot"></span>
+                <div><b>Система онлайн</b><small id="lastUpdate">Ожидание данных</small></div>
+            </div>
+        </aside>
+
+        <main class="content">
+            <header class="topbar">
                 <div>
-                    <p class="eyebrow">Склад</p>
-                    <h1 id="dashboardTitle">Дашборд занятости</h1>
+                    <p class="eyebrow">ПАНЕЛЬ УПРАВЛЕНИЯ</p>
+                    <h1 id="warehouseName">Управление складом</h1>
+                    <p id="warehouseLocation" class="subtitle">Загрузка топологии…</p>
                 </div>
-                <button id="refreshDashboard" class="secondary" type="button">Обновить</button>
-            </div>
+                <div class="topbar__actions">
+                    <button id="exportButton" class="button button--ghost" type="button">⇩ <span>Экспорт CSV</span></button>
+                    <button id="refreshDashboard" class="button button--primary" type="button">↻ <span>Обновить</span></button>
+                </div>
+            </header>
 
-            <div class="summary" aria-live="polite">
-                <article class="summary-card"><span>Всего авто</span><strong id="totalCars">—</strong></article>
-                <article class="summary-card summary-card--occupied"><span>Занято мест</span><strong id="occupiedCells">—</strong></article>
-                <article class="summary-card summary-card--free"><span>Свободно мест</span><strong id="freeCells">—</strong></article>
-                <article class="summary-card summary-card--reserved"><span>Зарезервировано под выгрузку</span><strong id="reservedCells">—</strong></article>
-            </div>
+            <section id="overview" class="stats" aria-label="Сводка по складу" aria-live="polite">
+                <article class="stat-card stat-card--blue"><div class="stat-card__icon">▣</div><div><span>Всего автомобилей</span><strong id="totalCars">—</strong><small>на территории склада</small></div></article>
+                <article class="stat-card stat-card--cyan"><div class="stat-card__icon">■</div><div><span>Занято ячеек</span><strong id="occupiedCells">—</strong><small id="occupiedPercent">—% вместимости</small></div></article>
+                <article class="stat-card stat-card--green"><div class="stat-card__icon">□</div><div><span>Свободно</span><strong id="freeCells">—</strong><small>доступно для размещения</small></div></article>
+                <article class="stat-card stat-card--violet"><div class="stat-card__icon">◆</div><div><span>В резерве</span><strong id="reservedCells">—</strong><small>ожидают выгрузки</small></div></article>
+            </section>
 
-            <h2>Занятость по зонам</h2>
-            <div id="zoneDashboard" class="zones">
-                <p class="dashboard-status">Загрузка данных…</p>
-            </div>
-        </section>
+            <section id="warehouseMap" class="panel map-panel">
+                <div class="panel__header">
+                    <div><p class="eyebrow">ТОПОЛОГИЯ</p><h2>Карта склада</h2><p>Актуальное состояние каждой ячейки</p></div>
+                    <div class="map-tools">
+                        <label class="search"><span>⌕</span><input id="mapSearch" type="search" placeholder="VIN, модель или ячейка" autocomplete="off"></label>
+                        <div id="zoneFilters" class="filter-group" aria-label="Фильтр зон"></div>
+                    </div>
+                </div>
+                <div class="legend">
+                    <span><i class="legend__dot legend__dot--free"></i>Свободно</span>
+                    <span><i class="legend__dot legend__dot--occupied"></i>Занято</span>
+                    <span><i class="legend__dot legend__dot--reserved"></i>Резерв</span>
+                    <span class="legend__hint">Нажмите на ячейку для подробностей</span>
+                </div>
+                <div id="warehouseGrid" class="warehouse-grid"><div class="loading">Загружаем карту склада…</div></div>
+            </section>
 
-        <section class="operations">
-            <h2>Операции с автомобилями</h2>
-            <form id="carForm">
-                <input id="vinInput" type="text" placeholder="VIN" required>
-                <input id="modelInput" type="text" placeholder="Модель" required>
-                <input id="cellIdInput" type="text" placeholder="ID ячейки (необязательно)">
-                <button type="submit">Добавить</button>
-            </form>
-            <form id="deleteCarForm">
-                <input id="deleteVinInput" type="text" placeholder="VIN для удаления" required>
-                <button type="submit">Удалить машину</button>
-            </form>
-            <form id="reserveCarForm">
-                <input id="reserveVinInput" type="text" placeholder="VIN для резервирования" required>
-                <button type="submit">Зарезервировать машину</button>
-            </form>
-            <form id="unreserveCarForm">
-                <input id="unreserveVinInput" type="text" placeholder="VIN для снятия резерва" required>
-                <button type="submit">Снять резерв</button>
-            </form>
-            <form id="findCarForm">
-                <input id="findVinInput" type="text" placeholder="VIN для поиска">
-                <input id="findModelInput" type="text" placeholder="Модель для поиска">
-                <button type="submit">Найти машину</button>
-            </form>
-            <form id="replaceCarForm">
-                <input id="replaceVinInput" type="text" placeholder="VIN для перемещения" required>
-                <input id="replaceCellIdInput" type="text" placeholder="Новый ID ячейки" required>
-                <button type="submit">Переместить машину</button>
-            </form>
-            <form id="fifoForm">
-                <input id="fifoModelInput" type="text" placeholder="Модель для FIFO" required>
-                <button type="submit">FIFO по модели</button>
-            </form>
-            <p id="message"></p>
-        </section>
+            <section id="operations" class="panel operations-panel">
+                <div class="panel__header"><div><p class="eyebrow">БЫСТРЫЕ ДЕЙСТВИЯ</p><h2>Операции с автомобилями</h2><p>Все основные складские операции в одном месте</p></div></div>
+                <div class="operation-tabs" role="tablist">
+                    <button class="operation-tab active" data-tab="add" type="button">＋ Приём</button>
+                    <button class="operation-tab" data-tab="move" type="button">↔ Перемещение</button>
+                    <button class="operation-tab" data-tab="reserve" type="button">◇ Резерв</button>
+                    <button class="operation-tab" data-tab="search" type="button">⌕ Поиск / FIFO</button>
+                    <button class="operation-tab" data-tab="delete" type="button">× Удаление</button>
+                </div>
+                <div class="operation-content">
+                    <form id="carForm" class="operation-form active" data-panel="add">
+                        <label>VIN автомобиля<input id="vinInput" type="text" placeholder="Например, XTA210990Y1234567" required></label>
+                        <label>Модель<input id="modelInput" type="text" placeholder="Например, Lada Vesta" required></label>
+                        <label>Ячейка <small>необязательно</small><input id="cellIdInput" type="text" placeholder="Автовыбор свободной ячейки"></label>
+                        <button class="button button--primary" type="submit">Принять автомобиль</button>
+                    </form>
+                    <form id="replaceCarForm" class="operation-form" data-panel="move">
+                        <label>VIN автомобиля<input id="replaceVinInput" type="text" placeholder="VIN для перемещения" required></label>
+                        <label>Новая ячейка<input id="replaceCellIdInput" type="text" placeholder="Например, B-1-2" required></label>
+                        <button class="button button--primary" type="submit">Переместить</button>
+                    </form>
+                    <div class="operation-form" data-panel="reserve">
+                        <form id="reserveCarForm" class="inline-form"><label>Поставить в резерв<input id="reserveVinInput" type="text" placeholder="VIN автомобиля" required></label><button class="button button--primary" type="submit">Зарезервировать</button></form>
+                        <form id="unreserveCarForm" class="inline-form"><label>Снять резерв<input id="unreserveVinInput" type="text" placeholder="VIN автомобиля" required></label><button class="button button--ghost" type="submit">Снять резерв</button></form>
+                    </div>
+                    <div class="operation-form" data-panel="search">
+                        <form id="findCarForm" class="inline-form"><label>VIN<input id="findVinInput" type="text" placeholder="Поиск по VIN"></label><label>или модель<input id="findModelInput" type="text" placeholder="Поиск по модели"></label><button class="button button--primary" type="submit">Найти</button></form>
+                        <form id="fifoForm" class="inline-form"><label>Первый по FIFO<input id="fifoModelInput" type="text" placeholder="Введите модель" required></label><button class="button button--ghost" type="submit">Найти первый</button></form>
+                    </div>
+                    <form id="deleteCarForm" class="operation-form" data-panel="delete">
+                        <label>VIN автомобиля<input id="deleteVinInput" type="text" placeholder="VIN для удаления" required></label>
+                        <button class="button button--danger" type="submit">Удалить со склада</button>
+                    </form>
+                </div>
+                <div id="message" class="message" role="status" aria-live="polite"></div>
+            </section>
+        </main>
+    </div>
 
-        <button onclick="exportData()">Экспортировать данные</button>
-    </main>
+    <div id="cellDialog" class="dialog" hidden>
+        <button class="dialog__backdrop" data-close-dialog aria-label="Закрыть"></button>
+        <article class="dialog__card" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+            <button class="dialog__close" data-close-dialog type="button" aria-label="Закрыть">×</button>
+            <p class="eyebrow">ИНФОРМАЦИЯ О ЯЧЕЙКЕ</p><h3 id="dialogTitle">Ячейка</h3><div id="dialogContent"></div>
+        </article>
+    </div>
     <script src="./App.js"></script>
 </body>
 </html>

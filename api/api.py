@@ -61,6 +61,11 @@ def get_dashboard():
     return storage.get_dashboard()
 
 
+@app.get("/api/state")
+def get_state():
+    return storage.get_state()
+
+
 @app.post("/api/car")
 def create_car(car: Car):
     try:
@@ -169,4 +174,3 @@ def get_csv_data():
             "Content-Disposition": 'attachment; filename="data.csv"'
         },
     )
-
