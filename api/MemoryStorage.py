@@ -1,17 +1,35 @@
-from threading import Lock
+from datetime import datetime, timezone
+from threading import RLock
 
-from models import Car, Dashboard, Warehouse, ZoneOccupancy
+from models import Car, Dashboard, Invoice, InvoiceCar, Shipment, ShipmentCreate, Warehouse, ZoneOccupancy, BatchCreate
 
 class MemoryStorage:
     def __init__(self, warehouse: Warehouse):
         self.warehouse = warehouse
         self._cars: dict[str, Car] = {}
-        self._lock = Lock()
+        self._shipments: dict[int, Shipment] = {}
+        self._invoices: dict[int, Invoice] = {}
+        self._next_shipment_id = 1
+        self._lock = RLock()
 
     def create_car(self, car: Car) -> Car:
         with self._lock:
             if car.vin in self._cars:
                 raise ValueError("Машина уже существует")
+
+            shipment = next(
+                (
+                    shipment
+                    for shipment in self._shipments.values()
+                    if car.vin in shipment.vins
+                ),
+                None,
+            )
+            if shipment is not None:
+                raise ValueError(
+                    f"Машина с VIN {car.vin} уже включена "
+                    f"в заявку на отгрузку с ID {shipment.id}"
+                )
 
             if car.cell_id is None:
                 cell = next(
@@ -193,3 +211,100 @@ class MemoryStorage:
             self._cars[vin] = unreserved_car
 
             return unreserved_car
+
+    def create_shipment(self, shipment: ShipmentCreate) -> Shipment:
+        with self._lock:
+            if len(shipment.vins) != len(set(shipment.vins)):
+                raise ValueError("Заявка содержит повторяющиеся VIN")
+
+            waiting_vins = {
+                vin
+                for existing in self._shipments.values()
+                if existing.status == "waiting for approval"
+                for vin in existing.vins
+            }
+            for vin in shipment.vins:
+                if vin in waiting_vins:
+                    raise ValueError(f"Машина с VIN {vin} уже включена в другую заявку")
+                car = self._cars.get(vin)
+                if car is None:
+                    raise ValueError(f"Машина с VIN {vin} не найдена")
+                cell = next(
+                    (cell for cell in self.warehouse.cells if cell.id == car.cell_id),
+                    None,
+                )
+                if cell is None:
+                    raise ValueError(f"Ячейка для машины с VIN {vin} не найдена")
+                if cell.status != "reserved":
+                    raise ValueError(f"Машина с VIN {vin} не зарезервирована")
+
+            stored_shipment = Shipment(
+                id=self._next_shipment_id,
+                vins=list(shipment.vins),
+                dealer=shipment.dealer,
+                status="waiting for approval",
+            )
+            self._shipments[stored_shipment.id] = stored_shipment
+            self._next_shipment_id += 1
+            return stored_shipment.model_copy(deep=True)
+
+    def get_shipments(self) -> list[Shipment]:
+        with self._lock:
+            return [
+                shipment.model_copy(deep=True)
+                for shipment in self._shipments.values()
+            ]
+
+    def get_invoices(self) -> list[Invoice]:
+        with self._lock:
+            return [invoice.model_copy(deep=True) for invoice in self._invoices.values()]
+
+    def get_invoice(self, shipment_id: int) -> Invoice | None:
+        with self._lock:
+            invoice = self._invoices.get(shipment_id)
+            return invoice.model_copy(deep=True) if invoice is not None else None
+
+    def delete_shipment(self, shipment_id: int) -> Shipment | None:
+        with self._lock:
+            shipment = self._shipments.get(shipment_id)
+            if shipment is None:
+                return None
+            if shipment.status == "shipped":
+                raise ValueError(f"Заявка с ID {shipment_id} уже отгружена")
+
+            for vin in shipment.vins:
+                car = self._cars.get(vin)
+                if car is None:
+                    raise ValueError(f"Машина с VIN {vin} не найдена")
+
+            invoice = Invoice(
+                shipment_id=shipment.id,
+                dealer=shipment.dealer,
+                shipped_at=datetime.now(timezone.utc),
+                cars=[
+                    InvoiceCar(brand=self._cars[vin].model, vin=vin)
+                    for vin in shipment.vins
+                ],
+            )
+
+            for vin in shipment.vins:
+                car = self._cars.pop(vin)
+                cell = next(
+                    (cell for cell in self.warehouse.cells if cell.id == car.cell_id),
+                    None,
+                )
+                if cell is not None:
+                    cell.status = "free"
+
+            shipped = shipment.model_copy(update={"status": "shipped"}, deep=True)
+            self._shipments[shipment_id] = shipped
+            self._invoices[shipment_id] = invoice
+            return shipped.model_copy(deep=True)
+
+    def create_batch(self, batch: BatchCreate) -> list[Car]:
+        with self._lock:
+            created_cars = []
+            for car in batch.cars:
+                created_car = self.create_car(car)
+                created_cars.append(created_car)
+            return created_cars

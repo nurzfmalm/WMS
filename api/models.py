@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -62,3 +64,28 @@ class Dashboard(ApiModel):
     reserved_cells: int = Field(alias="reservedCells")
     free_cells: int = Field(alias="freeCells")
     zones: list[ZoneOccupancy]
+
+
+class ShipmentCreate(ApiModel):
+    vins: list[str]
+    dealer: str
+
+
+class Shipment(ShipmentCreate):
+    id: int = Field(ge=1)
+    status: Literal["waiting for approval", "shipped"]
+
+
+class InvoiceCar(ApiModel):
+    brand: str
+    vin: str
+
+
+class Invoice(ApiModel):
+    shipment_id: int = Field(ge=1, alias="shipmentId")
+    dealer: str
+    shipped_at: datetime = Field(alias="shippedAt")
+    cars: list[InvoiceCar]
+
+class BatchCreate(ApiModel):
+    cars: list[Car]

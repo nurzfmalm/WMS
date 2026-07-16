@@ -4,6 +4,8 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 let warehouse = null;
 let cars = [];
 let activeZone = "all";
+let shipments = [];
+let invoices = [];
 
 const statusNames = { free: "Свободно", occupied: "Занято", reserved: "В резерве" };
 
@@ -31,6 +33,17 @@ function showMessage(text, isError = false) {
 }
 
 function carForCell(cellId) { return cars.find((car) => car.cellId === cellId); }
+function escapeHtml(value) { const node = document.createElement("div"); node.textContent = String(value ?? ""); return node.innerHTML; }
+
+function renderLogistics() {
+    $("#shipmentCount").textContent = shipments.length;
+    $("#invoiceCount").textContent = invoices.length;
+    $("#shipmentList").innerHTML = shipments.length ? [...shipments].reverse().map((shipment) => {
+        const waiting = shipment.status === "waiting for approval";
+        return `<article class="shipment-card"><div><h4>Заявка №${shipment.id}<span class="shipment-status${waiting ? "" : " shipped"}">${waiting ? "Ожидает подтверждения" : "Отгружена"}</span></h4><p>${escapeHtml(shipment.dealer)} · ${shipment.vins.length} авто<br>${shipment.vins.map(escapeHtml).join(", ")}</p></div><div class="shipment-card__actions">${waiting ? `<button class="button button--primary" data-ship-id="${shipment.id}" type="button">Подтвердить отгрузку</button>` : `<a class="button button--ghost" href="${API}/invoice/${shipment.id}/csv">CSV накладной</a>`}</div></article>`;
+    }).join("") : '<div class="empty-state">Заявок пока нет</div>';
+    $("#invoiceList").innerHTML = invoices.length ? [...invoices].reverse().map((invoice) => `<article class="invoice-card"><div><h4>Накладная к заявке №${invoice.shipmentId}</h4><p>${escapeHtml(invoice.dealer)} · ${new Date(invoice.shippedAt).toLocaleString("ru-RU")} · ${invoice.cars.length} авто<br>${invoice.cars.map((car) => `${escapeHtml(car.brand)} — ${escapeHtml(car.vin)}`).join(", ")}</p></div><a class="button button--ghost" href="${API}/invoice/${invoice.shipmentId}/csv">Скачать CSV</a></article>`).join("") : '<div class="empty-state">Накладных пока нет</div>';
+}
 
 function renderSummary(data) {
     $("#totalCars").textContent = data.totalCars;
@@ -97,14 +110,17 @@ async function loadData() {
     const button = $("#refreshDashboard");
     button.disabled = true;
     try {
-        const state = await apiRequest("/state");
+        const [state, shipmentData, invoiceData] = await Promise.all([apiRequest("/state"), apiRequest("/shipments"), apiRequest("/invoices")]);
         warehouse = state.warehouse;
         cars = state.cars;
+        shipments = shipmentData;
+        invoices = invoiceData;
         $("#warehouseName").textContent = warehouse.name || "Управление складом";
         $("#warehouseLocation").textContent = warehouse.location ? `Складской комплекс · ${warehouse.location}` : "Складской комплекс";
         renderSummary(state.dashboard);
         renderFilters();
         renderMap();
+        renderLogistics();
         $("#lastUpdate").textContent = `Обновлено ${new Date().toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"})}`;
     } catch (error) {
         $("#warehouseGrid").innerHTML = `<div class="loading">Не удалось загрузить карту. ${error.message}</div>`;
@@ -138,6 +154,22 @@ bindForm("#deleteCarForm", async () => { const vin=$("#deleteVinInput").value.tr
 bindForm("#reserveCarForm", async () => { const car=await apiRequest(`/reserve/${encodeURIComponent($("#reserveVinInput").value.trim())}`,{method:"PATCH"}); return `Автомобиль ${car.vin} поставлен в резерв`; });
 bindForm("#unreserveCarForm", async () => { const car=await apiRequest(`/unreserve/${encodeURIComponent($("#unreserveVinInput").value.trim())}`); return `Резерв автомобиля ${car.vin} снят`; });
 bindForm("#replaceCarForm", async () => { const car=await apiRequest(`/car/${encodeURIComponent($("#replaceVinInput").value.trim())}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({cellId:$("#replaceCellIdInput").value.trim()})}); return `Автомобиль ${car.vin} перемещён в ${car.cellId}`; });
+bindForm("#batchForm", async () => {
+    const lines = $("#batchInput").value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const batchCars = lines.map((line, index) => {
+        const [vin, model, cellId] = line.split(";").map((part) => part.trim());
+        if (!vin || !model) throw new Error(`Строка ${index + 1}: укажите VIN и модель через точку с запятой`);
+        return {vin, model, ...(cellId ? {cellId} : {})};
+    });
+    const created = await apiRequest("/batch", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({cars:batchCars})});
+    return `Принято автомобилей: ${created.length}`;
+});
+bindForm("#shipmentForm", async () => {
+    const vins = $("#shipmentVinsInput").value.split(/[\s,;]+/).map((vin) => vin.trim()).filter(Boolean);
+    if (!vins.length) throw new Error("Добавьте хотя бы один VIN");
+    const shipment = await apiRequest("/ship", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({dealer:$("#dealerInput").value.trim(), vins})});
+    return `Заявка №${shipment.id} создана`;
+});
 
 $("#findCarForm").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -157,6 +189,13 @@ $("#exportButton").addEventListener("click", () => { window.location.href = `${A
 $("#mapSearch").addEventListener("input", renderMap);
 $("#zoneFilters").addEventListener("click", (event) => { const button=event.target.closest("[data-zone]"); if(!button)return; activeZone=button.dataset.zone; renderFilters(); renderMap(); });
 $("#warehouseGrid").addEventListener("click", (event) => { const cell=event.target.closest("[data-cell]"); if(cell) openCell(cell.dataset.cell); });
+$("#shipmentList").addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-ship-id]");
+    if (!button || !window.confirm(`Подтвердить отгрузку по заявке №${button.dataset.shipId}? Автомобили будут удалены со склада.`)) return;
+    button.disabled = true;
+    try { await apiRequest(`/ship/${button.dataset.shipId}`, {method:"DELETE"}); showMessage(`Заявка №${button.dataset.shipId} отгружена, накладная сформирована`); await loadData(); }
+    catch (error) { showMessage(error.message, true); button.disabled = false; }
+});
 $("#dialogContent").addEventListener("submit", (event) => {
     const form = event.target.closest("[data-dialog-move]");
     if (!form) return;

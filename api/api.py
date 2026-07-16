@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 from pathlib import Path
 import pandas as pd
@@ -9,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException
 
 from MemoryStorage import MemoryStorage
-from models import Car, Cell, MoveCar, Warehouse, WarehouseConfig
+from models import Car, Cell, MoveCar, ShipmentCreate, Warehouse, WarehouseConfig, BatchCreate
 
 
 topology_path = Path(__file__).parent / "topology.json"
@@ -95,7 +97,7 @@ def delete_car(vin: str):
         return {"deleted": True, "vin": vin}
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error))
-    
+
 
 @app.get("/api/cars/{model}")
 def get_car_by_model(model: str):
@@ -164,7 +166,6 @@ def get_csv_data():
     columns = ["Модель", "Общее", "Свободно к продаже", "Резерв"]
     df = pd.DataFrame(rows_by_model.values(), columns=columns)
 
-    # BOM нужен, чтобы Excel корректно распознавал русские заголовки.
     csv_data = "\ufeff" + df.to_csv(index=False, sep=";", encoding="utf-8")
 
     return StreamingResponse(
@@ -174,3 +175,72 @@ def get_csv_data():
             "Content-Disposition": 'attachment; filename="data.csv"'
         },
     )
+
+@app.post("/api/ship")
+def create_shipment(shipment: ShipmentCreate):
+    try:
+        return storage.create_shipment(shipment)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+@app.get("/api/shipments")
+def get_shipments():
+    return storage.get_shipments()
+
+@app.get("/api/invoices")
+def get_invoices():
+    return storage.get_invoices()
+
+@app.get("/api/invoice/{shipment_id}")
+def get_invoice(shipment_id: int):
+    invoice = storage.get_invoice(shipment_id)
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="Накладная не найдена")
+    return invoice
+
+@app.get("/api/invoice/{shipment_id}/csv")
+def get_invoice_csv(shipment_id: int):
+    invoice = storage.get_invoice(shipment_id)
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="Накладная не найдена")
+
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow(["ID заявки", "Время отгрузки", "Дилер", "Марка", "VIN"])
+    for car in invoice.cars:
+        writer.writerow([
+            invoice.shipment_id,
+            invoice.shipped_at.isoformat(),
+            invoice.dealer,
+            car.brand,
+            car.vin,
+        ])
+
+    csv_data = "\ufeff" + output.getvalue()
+    return StreamingResponse(
+        iter([csv_data]),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="invoice-{shipment_id}.csv"'
+            )
+        },
+    )
+
+@app.delete("/api/ship/{shipment_id}")
+def delete_shipment(shipment_id: int):
+    try:
+        shipment = storage.delete_shipment(shipment_id)
+        if shipment is None:
+            raise HTTPException(status_code=404, detail="Отгрузка не найдена")
+        return shipment
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+@app.post("/api/batch")
+def create_batch(batch: BatchCreate | list[Car]):
+    try:
+        normalized_batch = batch if isinstance(batch, BatchCreate) else BatchCreate(cars=batch)
+        return storage.create_batch(normalized_batch)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))

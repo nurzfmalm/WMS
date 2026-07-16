@@ -21,6 +21,7 @@
                 <a class="nav__item active" href="#overview"><span>⌂</span> Обзор</a>
                 <a class="nav__item" href="#warehouseMap"><span>▦</span> Карта склада</a>
                 <a class="nav__item" href="#operations"><span>↔</span> Операции</a>
+                <a class="nav__item" href="#shipments"><span>⇥</span> Отгрузки</a>
             </nav>
             <div class="sidebar__footer">
                 <span class="connection-dot"></span>
@@ -73,6 +74,7 @@
                     <button class="operation-tab" data-tab="reserve" type="button">◇ Резерв</button>
                     <button class="operation-tab" data-tab="search" type="button">⌕ Поиск / FIFO</button>
                     <button class="operation-tab" data-tab="delete" type="button">× Удаление</button>
+                    <button class="operation-tab" data-tab="batch" type="button">≡ Пакетный приём</button>
                 </div>
                 <div class="operation-content">
                     <form id="carForm" class="operation-form active" data-panel="add">
@@ -98,8 +100,20 @@
                         <label>VIN автомобиля<input id="deleteVinInput" type="text" placeholder="VIN для удаления" required></label>
                         <button class="button button--danger" type="submit">Удалить со склада</button>
                     </form>
+                    <form id="batchForm" class="operation-form operation-form--stacked" data-panel="batch">
+                        <label>Автомобили <small>формат строки: VIN; модель; ячейка (необязательно)</small><textarea id="batchInput" rows="6" placeholder="XTA210990Y1234567; Lada Vesta; A-1-1&#10;XTA210990Y1234568; Lada Granta" required></textarea></label>
+                        <button class="button button--primary" type="submit">Принять партию</button>
+                    </form>
                 </div>
                 <div id="message" class="message" role="status" aria-live="polite"></div>
+            </section>
+            <section id="shipments" class="panel shipments-panel">
+                <div class="panel__header"><div><p class="eyebrow">ОТГРУЗКА</p><h2>Заявки и накладные</h2><p>Заявки создаются из зарезервированных автомобилей</p></div></div>
+                <div class="shipment-layout">
+                    <form id="shipmentForm" class="shipment-form"><label>Дилер<input id="dealerInput" type="text" placeholder="Название дилера" required></label><label>VIN автомобилей <small>по одному в строке или через запятую</small><textarea id="shipmentVinsInput" rows="5" required></textarea></label><button class="button button--primary" type="submit">Создать заявку</button></form>
+                    <div><div class="list-heading"><h3>Заявки</h3><span id="shipmentCount">0</span></div><div id="shipmentList" class="shipment-list"><div class="loading">Загрузка…</div></div></div>
+                </div>
+                <div class="invoice-section"><div class="list-heading"><h3>Накладные</h3><span id="invoiceCount">0</span></div><div id="invoiceList" class="invoice-list"><div class="loading">Загрузка…</div></div></div>
             </section>
         </main>
     </div>
