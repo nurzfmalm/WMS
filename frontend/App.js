@@ -46,6 +46,36 @@ function carForCell(cellId) {
   return cars.find((car) => car.cellId === cellId);
 }
 
+function downloadCsv(filename, rows) {
+  const escapeCell = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const csv = `\uFEFF${rows.map((row) => row.map(escapeCell).join(";")).join("\r\n")}`;
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function exportKpi() {
+  const button = $("#exportKpiButton");
+  button.disabled = true;
+  try {
+    const kpi = await apiRequest("/kpi");
+    downloadCsv(`wms-kpi-${new Date().toISOString().slice(0, 10)}.csv`, [
+      ["Показатель", "Значение", "Единица измерения"],
+      ["Загрузка склада", Number(kpi.percentage_occupied).toFixed(2), "%"],
+      ["Среднее время хранения", Number(kpi.average_storage_time).toFixed(2), "часов"],
+      ["Количество заявок на отгрузку", kpi.shipmentsCount, "шт."],
+    ]);
+    showMessage("KPI экспортированы в CSV");
+  } catch (error) {
+    showMessage(`Не удалось экспортировать KPI: ${error.message}`, true);
+  } finally { button.disabled = false; }
+}
+
 function renderSummary(data) {
   $("#totalCars").textContent = data.totalCars;
   $("#occupiedCells").textContent = `${data.occupiedCells} / ${data.totalCells}`;
@@ -235,6 +265,7 @@ async function runDialogAction(action, successMessage) {
 }
 
 $("#refreshDashboard").addEventListener("click", loadData);
+$("#exportKpiButton").addEventListener("click", exportKpi);
 $("#exportButton").addEventListener("click", () => { window.location.href = `${API}/csv`; });
 $("#mapSearch").addEventListener("input", renderMap);
 $("#zoneFilters").addEventListener("click", (event) => { const button = event.target.closest("[data-zone]"); if (!button) return; activeZone = button.dataset.zone; renderFilters(); renderMap(); });
