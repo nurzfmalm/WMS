@@ -244,3 +244,7 @@ def create_batch(batch: BatchCreate | list[Car]):
         return storage.create_batch(normalized_batch)
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error))
+
+@app.get("/api/kpi")
+def get_kpi():
+    return storage.export_kpi()

@@ -117,6 +117,14 @@ class MemoryStorage:
                 "warehouse": self.warehouse.model_copy(deep=True),
                 "dashboard": self._get_dashboard_unlocked(),
                 "cars": [car.model_copy(deep=True) for car in self._cars.values()],
+                "shipments": [
+                    shipment.model_copy(deep=True)
+                    for shipment in self._shipments.values()
+                ],
+                "invoices": [
+                    invoice.model_copy(deep=True)
+                    for invoice in self._invoices.values()
+                ],
             }
 
     def get_cars_by_model(self, model: str) -> list[Car]:
@@ -303,8 +311,44 @@ class MemoryStorage:
 
     def create_batch(self, batch: BatchCreate) -> list[Car]:
         with self._lock:
-            created_cars = []
-            for car in batch.cars:
-                created_car = self.create_car(car)
-                created_cars.append(created_car)
-            return created_cars
+            cars_snapshot = self._cars.copy()
+            statuses_snapshot = {
+                cell.id: cell.status for cell in self.warehouse.cells
+            }
+            try:
+                return [self.create_car(car) for car in batch.cars]
+            except ValueError:
+                self._cars = cars_snapshot
+                for cell in self.warehouse.cells:
+                    cell.status = statuses_snapshot[cell.id]
+                raise
+
+    def export_kpi(self) -> dict:
+        with self._lock:
+            total_cars = len(self._cars)
+            total_cells = len(self.warehouse.cells)
+            occupied_cells = sum(cell.status == "occupied" for cell in self.warehouse.cells)
+            reserved_cells = sum(cell.status == "reserved" for cell in self.warehouse.cells)
+            free_cells = total_cells - occupied_cells - reserved_cells
+            percentage_occupied = (occupied_cells / total_cells) * 100 if total_cells > 0 else 0
+
+            now = datetime.now(timezone.utc)
+            storage_times_hours = []
+            for car in self._cars.values():
+                arrival_time = car.arrival_time
+                if arrival_time.tzinfo is None:
+                    arrival_time = arrival_time.replace(tzinfo=timezone.utc)
+                storage_times_hours.append(
+                    max(0.0, (now - arrival_time).total_seconds() / 3600)
+                )
+
+            average_storage_time = (
+                sum(storage_times_hours) / total_cars if total_cars > 0 else 0
+            )
+            shipmentsCount = len(self._shipments)
+
+            return {
+                "percentage_occupied": percentage_occupied,
+                "average_storage_time": average_storage_time,
+                "shipmentsCount": shipmentsCount,
+            }
