@@ -1,5 +1,8 @@
 .vercel/
 .vscode/
+.venv/
+.pytest_cache/
+.ruff_cache/
 vercel.json
 pycache/
 __pycache__/
@@ -8,3 +11,4 @@ __pycache__/
 *.pyd
 .DS_Store
 Thumbs.db
+.agents/

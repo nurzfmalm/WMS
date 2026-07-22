@@ -1,4 +1,4 @@
-const API = "https://wms-xxgh.vercel.app/api";
+const API = "http://127.0.0.1:8000/api";
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
@@ -6,15 +6,34 @@ let warehouse = null;
 let cars = [];
 let shipments = [];
 let invoices = [];
+let cellStatuses = [];
 let activeZone = "all";
 let messageTimer = null;
+let authMode = "login";
+let authToken = localStorage.getItem("wmsToken") || "";
+let authUsername = localStorage.getItem("wmsUsername") || "";
 
-const statusNames = { free: "Свободно", occupied: "Занято", reserved: "В резерве" };
+function statusInfo(code) {
+  return cellStatuses.find((status) => status.code === code) || { code, label: code, color: "#e8ebef", isAvailable: false, actions: [] };
+}
+
+function showAuth() {
+  $("#authScreen").hidden = false;
+  $("#appShell").hidden = true;
+}
+
+function showApp() {
+  $("#authScreen").hidden = true;
+  $("#appShell").hidden = false;
+  $("#currentUser").textContent = authUsername;
+}
 
 async function apiRequest(path, options = {}) {
-  const response = await fetch(`${API}${path}`, options);
+  const headers = new Headers(options.headers || {});
+  if (authToken) headers.set("Authorization", `Bearer ${authToken}`);
+  const response = await fetch(`${API}${path}`, { ...options, headers });
   let data = null;
-  try { data = await response.json(); } catch (_) { /* Ответ без JSON допустим. */ }
+  try { data = await response.json(); } catch (_) {}
   if (!response.ok) {
     const fallback = response.status === 404
       ? "Запись не найдена. Данные API могли быть сброшены — обновите страницу."
@@ -23,6 +42,11 @@ async function apiRequest(path, options = {}) {
         : "Не удалось выполнить операцию";
     const error = new Error(data?.detail || fallback);
     error.status = response.status;
+    if (response.status === 401 && !path.startsWith("/auth/")) {
+      authToken = "";
+      localStorage.removeItem("wmsToken");
+      showAuth();
+    }
     throw error;
   }
   return data;
@@ -111,24 +135,27 @@ function renderMap() {
         const car = carForCell(cell.Id);
         const searchable = `${cell.Id} ${car?.vin || ""} ${car?.model || ""}`.toLowerCase();
         const visible = !query || searchable.includes(query);
-        return `<button class="cell cell--${cell.status}${query && visible ? " highlight" : ""}" data-cell="${escapeHtml(cell.Id)}" type="button" title="${escapeHtml(cell.Id)} — ${statusNames[cell.status] || cell.status}" style="${visible ? "" : "opacity:.18"}"><span class="cell__id">${escapeHtml(cell.Id)}</span>${cell.status !== "free" ? '<span class="cell__car">◆</span>' : ""}<span class="cell__model">${escapeHtml(car?.model || "свободно")}</span></button>`;
+        const status = statusInfo(cell.status);
+        const style = `${visible ? "" : "opacity:.18;"}--cell-status-color:${escapeHtml(status.color)}`;
+        return `<button class="cell cell--dynamic${query && visible ? " highlight" : ""}" data-cell="${escapeHtml(cell.Id)}" type="button" title="${escapeHtml(cell.Id)} — ${escapeHtml(status.label)}" style="${style}"><span class="cell__id">${escapeHtml(cell.Id)}</span>${car ? '<span class="cell__car">◆</span>' : ""}<span class="cell__model">${escapeHtml(car?.model || status.label)}</span></button>`;
       }).join("")}</div>`;
     }).join("");
-    const free = zoneCells.filter((cell) => cell.status === "free").length;
+    const free = zoneCells.filter((cell) => statusInfo(cell.status).isAvailable).length;
     return `<section class="zone-block"><div class="zone-name">ЗОНА ${escapeHtml(zone)}<small>${free}/${zoneCells.length} свободно</small></div><div class="zone-rows">${rowHtml}</div></section>`;
   }).join("");
   $("#warehouseGrid").innerHTML = html || '<div class="empty-state">Нет ячеек для отображения</div>';
 }
 
 function renderLogistics() {
+  const downloadToken = encodeURIComponent(authToken);
   $("#shipmentCount").textContent = shipments.length;
   $("#invoiceCount").textContent = invoices.length;
   $("#shipmentList").innerHTML = shipments.length ? [...shipments].reverse().map((shipment) => {
     const waiting = shipment.status === "waiting for approval";
-    return `<article class="shipment-card"><div><h4>Заявка №${shipment.id}<span class="shipment-status${waiting ? "" : " shipped"}">${waiting ? "Ожидает подтверждения" : "Отгружено"}</span></h4><p>${escapeHtml(shipment.dealer)} · ${shipment.vins.length} авто<br>${shipment.vins.map(escapeHtml).join(", ")}</p></div><div class="shipment-card__actions">${waiting ? `<button class="button button--primary" data-ship-id="${shipment.id}" type="button">Подтвердить отгрузку</button>` : `<a class="button button--secondary" href="${API}/invoice/${shipment.id}/csv">CSV накладной</a>`}</div></article>`;
+    return `<article class="shipment-card"><div><h4>Заявка №${shipment.id}<span class="shipment-status${waiting ? "" : " shipped"}">${waiting ? "Ожидает подтверждения" : "Отгружено"}</span></h4><p>${escapeHtml(shipment.dealer)} · ${shipment.vins.length} авто<br>${shipment.vins.map(escapeHtml).join(", ")}</p></div><div class="shipment-card__actions">${waiting ? `<button class="button button--primary" data-ship-id="${shipment.id}" type="button">Подтвердить отгрузку</button>` : `<a class="button button--secondary" href="${API}/invoice/${shipment.id}/csv?token=${downloadToken}">CSV накладной</a>`}</div></article>`;
   }).join("") : '<div class="empty-state">Заявок пока нет</div>';
   $("#invoiceList").innerHTML = invoices.length ? [...invoices].reverse().map((invoice) =>
-    `<article class="invoice-card"><div><h4>Накладная к заявке №${invoice.shipmentId}</h4><p>${escapeHtml(invoice.dealer)} · ${new Date(invoice.shippedAt).toLocaleString("ru-RU")} · ${invoice.cars.length} авто<br>${invoice.cars.map((car) => `${escapeHtml(car.brand)} — ${escapeHtml(car.vin)}`).join(", ")}</p></div><a class="button button--secondary" href="${API}/invoice/${invoice.shipmentId}/csv"><span class="material-symbols-outlined">download</span>Скачать CSV</a></article>`
+    `<article class="invoice-card"><div><h4>Накладная к заявке №${invoice.shipmentId}</h4><p>${escapeHtml(invoice.dealer)} · ${new Date(invoice.shippedAt).toLocaleString("ru-RU")} · ${invoice.cars.length} авто<br>${invoice.cars.map((car) => `${escapeHtml(car.brand)} — ${escapeHtml(car.vin)}`).join(", ")}</p></div><a class="button button--secondary" href="${API}/invoice/${invoice.shipmentId}/csv?token=${downloadToken}"><span class="material-symbols-outlined">download</span>Скачать CSV</a></article>`
   ).join("") : '<div class="empty-state">Накладных пока нет</div>';
 }
 
@@ -136,12 +163,15 @@ function openCell(cellId) {
   const cell = warehouse.cells.find((item) => item.Id === cellId);
   const car = carForCell(cellId);
   $("#dialogTitle").textContent = `Ячейка ${cell.Id}`;
-  const actions = car && cell.status === "reserved"
-    ? `<div class="dialog-actions"><span class="overline">ДЕЙСТВИЯ</span><p class="dialog-actions__notice">Перед перемещением или удалением снимите автомобиль с резерва.</p><button class="button button--secondary" data-dialog-reserve data-vin="${escapeHtml(car.vin)}" data-reserved="true" type="button">Снять резерв</button></div>`
-    : car
-      ? `<div class="dialog-actions"><span class="overline">ДЕЙСТВИЯ</span><form class="dialog-move" data-dialog-move data-vin="${escapeHtml(car.vin)}"><input name="cellId" type="text" placeholder="Новая ячейка, например B-1-2" required><button class="button button--primary" type="submit">Переместить</button></form><div class="dialog-actions__row"><button class="button button--secondary" data-dialog-reserve data-vin="${escapeHtml(car.vin)}" data-reserved="false" type="button">В резерв</button><button class="button button--danger" data-dialog-delete data-vin="${escapeHtml(car.vin)}" type="button">Удалить</button></div></div>`
-      : "";
-  $("#dialogContent").innerHTML = `<div class="detail-list"><div class="detail"><span>СТАТУС</span><b class="status-pill ${cell.status}">${statusNames[cell.status] || cell.status}</b></div><div class="detail"><span>ЗОНА / РЯД</span><b>${escapeHtml(cell.zone)} / ${cell.row}</b></div>${car ? `<div class="detail"><span>АВТОМОБИЛЬ</span><b>${escapeHtml(car.model)}</b></div><div class="detail"><span>VIN</span><b>${escapeHtml(car.vin)}</b></div><div class="detail"><span>ДАТА ПРИЁМА</span><b>${new Date(car.arrivalTime).toLocaleString("ru-RU")}</b></div>` : '<div class="detail"><span>РАЗМЕЩЕНИЕ</span><b>Ячейка доступна</b></div>'}</div>${actions}`;
+  const status = statusInfo(cell.status);
+  const allowed = new Set(status.actions);
+  const actionParts = [];
+  if (car && allowed.has("move")) actionParts.push(`<form class="dialog-move" data-dialog-move data-vin="${escapeHtml(car.vin)}"><input name="cellId" type="text" placeholder="Новая ячейка, например B-1-2" required><button class="button button--primary" type="submit">Переместить</button></form>`);
+  if (car && allowed.has("reserve")) actionParts.push(`<button class="button button--secondary" data-dialog-reserve data-vin="${escapeHtml(car.vin)}" data-reserved="false" type="button">В резерв</button>`);
+  if (car && allowed.has("unreserve")) actionParts.push(`<button class="button button--secondary" data-dialog-reserve data-vin="${escapeHtml(car.vin)}" data-reserved="true" type="button">Снять резерв</button>`);
+  if (car && allowed.has("delete")) actionParts.push(`<button class="button button--danger" data-dialog-delete data-vin="${escapeHtml(car.vin)}" type="button">Удалить</button>`);
+  const actions = actionParts.length ? `<div class="dialog-actions"><span class="overline">ДЕЙСТВИЯ</span><div class="dialog-actions__row">${actionParts.join("")}</div></div>` : "";
+  $("#dialogContent").innerHTML = `<div class="detail-list"><div class="detail"><span>СТАТУС</span><b class="status-pill" style="--cell-status-color:${escapeHtml(status.color)}">${escapeHtml(status.label)}</b></div><div class="detail"><span>ЗОНА / РЯД</span><b>${escapeHtml(cell.zone)} / ${cell.row}</b></div>${car ? `<div class="detail"><span>АВТОМОБИЛЬ</span><b>${escapeHtml(car.model)}</b></div><div class="detail"><span>VIN</span><b>${escapeHtml(car.vin)}</b></div><div class="detail"><span>ДАТА ПРИЁМА</span><b>${new Date(car.arrivalTime).toLocaleString("ru-RU")}</b></div>` : `<div class="detail"><span>РАЗМЕЩЕНИЕ</span><b>${status.isAvailable ? "Ячейка доступна" : "Ячейка недоступна"}</b></div>`}</div>${actions}`;
   $("#cellDialog").hidden = false;
 }
 
@@ -154,6 +184,8 @@ async function loadData() {
     cars = state.cars || [];
     shipments = state.shipments || [];
     invoices = state.invoices || [];
+    cellStatuses = state.cellStatuses || [];
+    $("#statusLegend").innerHTML = cellStatuses.map((status) => `<span><i style="background:${escapeHtml(status.color)}"></i>${escapeHtml(status.label)}</span>`).join("");
     $("#warehouseName").textContent = warehouse.name || "Управление складом автомобилей";
     $("#warehouseLocation").textContent = warehouse.location || "Складской комплекс";
     renderSummary(state.dashboard);
@@ -266,7 +298,7 @@ async function runDialogAction(action, successMessage) {
 
 $("#refreshDashboard").addEventListener("click", loadData);
 $("#exportKpiButton").addEventListener("click", exportKpi);
-$("#exportButton").addEventListener("click", () => { window.location.href = `${API}/csv`; });
+$("#exportButton").addEventListener("click", () => { window.location.href = `${API}/csv?token=${encodeURIComponent(authToken)}`; });
 $("#mapSearch").addEventListener("input", renderMap);
 $("#zoneFilters").addEventListener("click", (event) => { const button = event.target.closest("[data-zone]"); if (!button) return; activeZone = button.dataset.zone; renderFilters(); renderMap(); });
 $("#warehouseGrid").addEventListener("click", (event) => { const cell = event.target.closest("[data-cell]"); if (cell) openCell(cell.dataset.cell); });
@@ -312,4 +344,41 @@ $$('.nav__item').forEach((item) => item.addEventListener("click", () => {
   $$('.nav__item').forEach((link) => link.classList.toggle("active", link === item));
 }));
 
-loadData();
+$("#authSwitch").addEventListener("click", () => {
+  authMode = authMode === "login" ? "register" : "login";
+  const registering = authMode === "register";
+  $("#authHint").textContent = registering ? "Создайте аккаунт для работы со складом" : "Войдите, чтобы продолжить работу со складом";
+  $("#authSubmit").textContent = registering ? "Зарегистрироваться" : "Войти";
+  $("#authSwitch").textContent = registering ? "Уже есть аккаунт? Войти" : "Нет аккаунта? Зарегистрироваться";
+  $("#authPassword").autocomplete = registering ? "new-password" : "current-password";
+  $("#authError").textContent = "";
+});
+
+$("#authForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submit = $("#authSubmit");
+  submit.disabled = true;
+  $("#authError").textContent = "";
+  try {
+    const result = await apiRequest(`/auth/${authMode}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: $("#authUsername").value.trim(), password: $("#authPassword").value }) });
+    authToken = result.token;
+    authUsername = result.username;
+    localStorage.setItem("wmsToken", authToken);
+    localStorage.setItem("wmsUsername", authUsername);
+    $("#authForm").reset();
+    showApp();
+    await loadData();
+  } catch (error) { $("#authError").textContent = error.message; }
+  finally { submit.disabled = false; }
+});
+
+$("#logoutButton").addEventListener("click", async () => {
+  try { await apiRequest("/auth/logout", { method: "POST" }); } catch (_) {}
+  authToken = "";
+  authUsername = "";
+  localStorage.removeItem("wmsToken");
+  localStorage.removeItem("wmsUsername");
+  showAuth();
+});
+
+if (authToken) { showApp(); loadData(); } else { showAuth(); }

@@ -1,7 +1,28 @@
 from datetime import datetime, timezone
 from threading import RLock
 
-from models import Car, Dashboard, Invoice, InvoiceCar, Shipment, ShipmentCreate, Warehouse, ZoneOccupancy, BatchCreate
+from models import (
+    Car,
+    CellStatus,
+    Dashboard,
+    Invoice,
+    InvoiceCar,
+    Shipment,
+    ShipmentCreate,
+    Warehouse,
+    ZoneOccupancy,
+    BatchCreate,
+)
+
+
+CELL_STATUSES = [
+    CellStatus(code="free", label="Свободно", color="#e8ebef", is_available=True, actions=[]),
+    CellStatus(
+        code="occupied", label="Занято", color="#2458c6", is_available=False, actions=["move", "reserve", "delete"]
+    ),
+    CellStatus(code="reserved", label="В резерве", color="#7352a4", is_available=False, actions=["unreserve"]),
+]
+
 
 class MemoryStorage:
     def __init__(self, warehouse: Warehouse):
@@ -12,24 +33,20 @@ class MemoryStorage:
         self._next_shipment_id = 1
         self._lock = RLock()
 
+    def get_cell_statuses(self) -> list[CellStatus]:
+        return [status.model_copy(deep=True) for status in CELL_STATUSES]
+
     def create_car(self, car: Car) -> Car:
         with self._lock:
             if car.vin in self._cars:
                 raise ValueError("Машина уже существует")
 
             shipment = next(
-                (
-                    shipment
-                    for shipment in self._shipments.values()
-                    if car.vin in shipment.vins
-                ),
+                (shipment for shipment in self._shipments.values() if car.vin in shipment.vins),
                 None,
             )
             if shipment is not None:
-                raise ValueError(
-                    f"Машина с VIN {car.vin} уже включена "
-                    f"в заявку на отгрузку с ID {shipment.id}"
-                )
+                raise ValueError(f"Машина с VIN {car.vin} уже включена в заявку на отгрузку с ID {shipment.id}")
 
             if car.cell_id is None:
                 cell = next(
@@ -86,13 +103,15 @@ class MemoryStorage:
             zone_cells = [cell for cell in self.warehouse.cells if cell.zone == zone_name]
             occupied = sum(cell.status == "occupied" for cell in zone_cells)
             reserved = sum(cell.status == "reserved" for cell in zone_cells)
-            zones.append(ZoneOccupancy(
-                zone=zone_name,
-                total=len(zone_cells),
-                occupied=occupied,
-                reserved=reserved,
-                free=len(zone_cells) - occupied - reserved,
-            ))
+            zones.append(
+                ZoneOccupancy(
+                    zone=zone_name,
+                    total=len(zone_cells),
+                    occupied=occupied,
+                    reserved=reserved,
+                    free=len(zone_cells) - occupied - reserved,
+                )
+            )
 
         occupied_cells = sum(zone.occupied for zone in zones)
         reserved_cells = sum(zone.reserved for zone in zones)
@@ -114,17 +133,12 @@ class MemoryStorage:
         """Return one internally consistent snapshot for the frontend."""
         with self._lock:
             return {
+                "cellStatuses": self.get_cell_statuses(),
                 "warehouse": self.warehouse.model_copy(deep=True),
                 "dashboard": self._get_dashboard_unlocked(),
                 "cars": [car.model_copy(deep=True) for car in self._cars.values()],
-                "shipments": [
-                    shipment.model_copy(deep=True)
-                    for shipment in self._shipments.values()
-                ],
-                "invoices": [
-                    invoice.model_copy(deep=True)
-                    for invoice in self._invoices.values()
-                ],
+                "shipments": [shipment.model_copy(deep=True) for shipment in self._shipments.values()],
+                "invoices": [invoice.model_copy(deep=True) for invoice in self._invoices.values()],
             }
 
     def get_cars_by_model(self, model: str) -> list[Car]:
@@ -162,12 +176,12 @@ class MemoryStorage:
 
             if old_cell is not None:
                 old_cell.status = "free"
-    
+
             new_cell.status = "occupied"
-    
+
             moved_car = car.model_copy(update={"cell_id": new_cell_id})
             self._cars[vin] = moved_car
-    
+
             return moved_car
 
     def reserve_car(self, vin: str) -> Car:
@@ -258,10 +272,7 @@ class MemoryStorage:
 
     def get_shipments(self) -> list[Shipment]:
         with self._lock:
-            return [
-                shipment.model_copy(deep=True)
-                for shipment in self._shipments.values()
-            ]
+            return [shipment.model_copy(deep=True) for shipment in self._shipments.values()]
 
     def get_invoices(self) -> list[Invoice]:
         with self._lock:
@@ -289,10 +300,7 @@ class MemoryStorage:
                 shipment_id=shipment.id,
                 dealer=shipment.dealer,
                 shipped_at=datetime.now(timezone.utc),
-                cars=[
-                    InvoiceCar(brand=self._cars[vin].model, vin=vin)
-                    for vin in shipment.vins
-                ],
+                cars=[InvoiceCar(brand=self._cars[vin].model, vin=vin) for vin in shipment.vins],
             )
 
             for vin in shipment.vins:
@@ -312,9 +320,7 @@ class MemoryStorage:
     def create_batch(self, batch: BatchCreate) -> list[Car]:
         with self._lock:
             cars_snapshot = self._cars.copy()
-            statuses_snapshot = {
-                cell.id: cell.status for cell in self.warehouse.cells
-            }
+            statuses_snapshot = {cell.id: cell.status for cell in self.warehouse.cells}
             try:
                 return [self.create_car(car) for car in batch.cars]
             except ValueError:
@@ -328,8 +334,6 @@ class MemoryStorage:
             total_cars = len(self._cars)
             total_cells = len(self.warehouse.cells)
             occupied_cells = sum(cell.status == "occupied" for cell in self.warehouse.cells)
-            reserved_cells = sum(cell.status == "reserved" for cell in self.warehouse.cells)
-            free_cells = total_cells - occupied_cells - reserved_cells
             percentage_occupied = (occupied_cells / total_cells) * 100 if total_cells > 0 else 0
 
             now = datetime.now(timezone.utc)
@@ -338,13 +342,9 @@ class MemoryStorage:
                 arrival_time = car.arrival_time
                 if arrival_time.tzinfo is None:
                     arrival_time = arrival_time.replace(tzinfo=timezone.utc)
-                storage_times_hours.append(
-                    max(0.0, (now - arrival_time).total_seconds() / 3600)
-                )
+                storage_times_hours.append(max(0.0, (now - arrival_time).total_seconds() / 3600))
 
-            average_storage_time = (
-                sum(storage_times_hours) / total_cars if total_cars > 0 else 0
-            )
+            average_storage_time = sum(storage_times_hours) / total_cars if total_cars > 0 else 0
             shipmentsCount = len(self._shipments)
 
             return {

@@ -26,6 +26,25 @@ class Cell(ApiModel):
     index: int
     status: str
 
+
+class CellStatus(ApiModel):
+    code: str
+    label: str
+    color: str
+    is_available: bool = Field(alias="isAvailable")
+    actions: list[Literal["move", "reserve", "unreserve", "delete"]]
+
+
+class Credentials(ApiModel):
+    username: str = Field(min_length=3, max_length=50)
+    password: str = Field(min_length=6, max_length=128)
+
+
+class AuthResponse(ApiModel):
+    token: str
+    username: str
+
+
 class Warehouse(ApiModel):
     id: str = Field(alias="Id")
     name: str
@@ -44,6 +63,7 @@ class WarehouseConfig(ApiModel):
     name: str
     location: str
     zones: list[ZoneConfig]
+
 
 class MoveCar(ApiModel):
     cell_id: str = Field(alias="cellId")
@@ -86,6 +106,7 @@ class Invoice(ApiModel):
     dealer: str
     shipped_at: datetime = Field(alias="shippedAt")
     cars: list[InvoiceCar]
+
 
 class BatchCreate(ApiModel):
     cars: list[Car]

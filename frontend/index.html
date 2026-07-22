@@ -11,7 +11,19 @@
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <div class="app-shell">
+  <section id="authScreen" class="auth-screen">
+    <form id="authForm" class="auth-card">
+      <span class="material-symbols-outlined auth-card__icon">precision_manufacturing</span>
+      <h1>WMS Control</h1>
+      <p id="authHint">Войдите, чтобы продолжить работу со складом</p>
+      <label>Логин<input id="authUsername" type="text" minlength="3" maxlength="50" autocomplete="username" required></label>
+      <label>Пароль<input id="authPassword" type="password" minlength="6" maxlength="128" autocomplete="current-password" required></label>
+      <button id="authSubmit" class="button button--primary" type="submit">Войти</button>
+      <button id="authSwitch" class="auth-switch" type="button">Нет аккаунта? Зарегистрироваться</button>
+      <div id="authError" class="auth-error" role="alert"></div>
+    </form>
+  </section>
+  <div id="appShell" class="app-shell" hidden>
     <aside class="sidebar">
       <a class="brand" href="#overview"><span class="material-symbols-outlined brand__icon">precision_manufacturing</span><span><b>WMS Control</b><small>Система управления</small></span></a>
       <nav class="nav" aria-label="Основная навигация">
@@ -26,9 +38,11 @@
     <header class="topbar">
       <div><h1 id="warehouseName">Управление складом автомобилей</h1><p><span class="material-symbols-outlined">location_on</span><span id="warehouseLocation">Загрузка данных…</span></p></div>
       <div class="topbar__actions">
+        <span id="currentUser" class="current-user"></span>
         <button id="refreshDashboard" class="button button--secondary" type="button"><span class="material-symbols-outlined">refresh</span><span>Обновить</span></button>
         <button id="exportKpiButton" class="button button--secondary" type="button"><span class="material-symbols-outlined">monitoring</span><span>Экспорт KPI</span></button>
         <button id="exportButton" class="button button--primary" type="button"><span class="material-symbols-outlined">download</span><span>Экспорт CSV</span></button>
+        <button id="logoutButton" class="button button--secondary" type="button"><span class="material-symbols-outlined">logout</span><span>Выйти</span></button>
       </div>
     </header>
 
@@ -52,7 +66,7 @@
               <label class="search"><span class="material-symbols-outlined">search</span><input id="mapSearch" type="search" placeholder="VIN, модель или ID ячейки" autocomplete="off"></label>
               <div id="zoneFilters" class="filter-group" aria-label="Фильтр зон"></div>
             </div>
-            <div class="legend"><span><i class="free"></i>Свободно</span><span><i class="occupied"></i>Занято</span><span><i class="reserved"></i>В резерве</span></div>
+            <div id="statusLegend" class="legend"></div>
             <div id="warehouseGrid" class="warehouse-grid"><div class="loading">Загружаем карту склада…</div></div>
           </div>
         </div>
