@@ -1,4 +1,6 @@
-const API = "http://wms-xxgh.vercel.app/api";
+const API = ["localhost", "127.0.0.1"].includes(window.location.hostname)
+  ? "http://127.0.0.1:8000/api"
+  : "https://wms-xxgh.vercel.app/api";
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
